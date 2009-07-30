@@ -84,6 +84,10 @@ matrix = MatrixFunc
 fromList :: [[t]] -> Matrix t
 fromList m = matrix (length m) (minimum (map length m)) $ \r c -> m !! r !! c
 
+permuteRows    f m = matrix (matRows m) (matCols m) $ \i j -> index m (f i) j
+permuteCols    f m = matrix (matRows m) (matCols m) $ \i j -> index m i (f j)
+permuteIndices f m = matrix (matRows m) (matCols m) $ \i j -> uncurry (index m) (f i j)
+
 toList m =
     [ [ index m i j
       | j <- [0..matCols m - 1]
@@ -116,44 +120,6 @@ vecFromList l = vector (length l) (l!!)
 
 vecToList v = [vecIndex v i | i <- [0..vecElems v - 1]]
 
-
--- contractWith :: (a -> b -> c) -> ([c] -> t) -> Matrix a -> Int -> Matrix b -> Matrix t
--- contractWith (*) sum m1 n m2 r c = sum
---     [ m1 r i * m2 i c
---     | i <- [0..n-1]
---     ]
--- 
--- mul :: Num a => Matrix a -> Int -> Matrix a -> Matrix a
--- mul m1 n m2 r c = sum
---     [ a * b
---     | i <- [0..n-1]
---     , let a = m1 r i
---     , a /= 0
---     , let b = m2 i c
---     , b /= 0
---     ]
--- 
--- apply :: Num t => Matrix t -> Vector t -> Int -> Vector t
--- apply mat vec r c = applyVec (row c mat) r vec
--- 
--- applyVec :: Num t => Vector t -> Int -> Vector t -> t
--- applyVec v1 n v2 = sum
---     [ v1 i * v2 i
---     | i <- [0..n-1]
---     ]
--- 
--- asCol :: Vector t -> Matrix t
--- asCol v r c = v r
--- 
--- col :: Int -> Matrix t -> Vector t
--- col c m r = m r c
--- 
--- asRow :: Vector t -> Matrix t
--- asRow v r c = v c
--- 
--- row :: Int -> Matrix t -> Vector t
--- row r m c = m r c
--- 
 asDiagonal :: Num t => Vector t -> Matrix t
 asDiagonal vec = matrix n n diag
     where
@@ -182,13 +148,24 @@ transpose mat@Matrix{} = Matrix
     }
 transpose (MatrixFunc r c f) = MatrixFunc c r (flip f)
 
--- 
--- vcat, hcat :: Int -> Matrix t -> Matrix t -> Matrix t
--- vcat r0 m1 m2 r c
---     | r < r0    = m1  r     c
---     | otherwise = m2 (r-r0) c
--- 
--- hcat c0 m1 m2 r c
---     | c < c0    = m1 r     c
---     | otherwise = m2 r (c-c0)
--- 
+apply :: Num t => Matrix t -> Vector t -> Vector t
+apply = applyWith sum (*)
+
+applyWith :: ([c] -> t) -> (a -> b -> c) -> Matrix a -> Vector b -> Vector t
+applyWith sum (*) m v 
+    | matCols m == vecElems v
+    = vector (matRows m) $ \i ->
+        sum [index m i j * vecIndex v j | j <- [0..matCols m - 1]]
+    | otherwise
+    = error "apply: matrix does not have same number of columns as vector has elements"
+
+multiply :: Num t => Matrix t -> Matrix t -> Matrix t
+multiply = multiplyWith sum (*)
+
+multiplyWith sum (*) m1 m2
+    | matCols m1 == matRows m2
+    = matrix (matRows m1) (matCols m2) $ \i j ->
+        sum [index m1 i k * index m2 k j | k <- [0..matCols m1-1]]
+    
+    | otherwise
+    = error "multiplyWith: matrices sizes are not compatible"
