@@ -8,6 +8,15 @@ module Data.Matrix.Functional where
 import qualified Data.StorableVector as SV
 import Foreign.Storable
 
+import Prelude hiding (sum)
+
+import SimpleReflect
+mat n r c = fromList [[fun n i j :: Expr | j <- [0..c-1]] | i <- [0..r-1]]
+
+sum xs
+    | null xs   = 0
+    | otherwise = foldl1 (+) xs
+
 data Vector t
     = Storable t => Vector
         { vecBuf    :: SV.Vector t
@@ -120,13 +129,13 @@ vecFromList l = vector (length l) (l!!)
 
 vecToList v = [vecIndex v i | i <- [0..vecElems v - 1]]
 
-asDiagonal :: Num t => Vector t -> Matrix t
-asDiagonal vec = matrix n n diag
+asDiagonal :: t -> Vector t -> Matrix t
+asDiagonal z vec = matrix n n diag
     where
         n = vecElems vec
         diag r c
             | r == c    = vecIndex vec r
-            | otherwise = 0
+            | otherwise = z
 
 diagonal :: Matrix t -> Vector t
 diagonal mat = vector (min r c) $ \n -> index mat n n
@@ -135,7 +144,7 @@ diagonal mat = vector (min r c) $ \n -> index mat n n
         c = matCols mat
 
 kronecker :: Num t => Int -> Matrix t
-kronecker n = asDiagonal (vector n (const 1))
+kronecker n = asDiagonal 0 (vector n (const 1))
 
 transpose :: Matrix t -> Matrix t
 transpose mat@Matrix{} = Matrix
@@ -168,4 +177,5 @@ multiplyWith sum (*) m1 m2
         sum [index m1 i k * index m2 k j | k <- [0..matCols m1-1]]
     
     | otherwise
-    = error "multiplyWith: matrices sizes are not compatible"
+    = error "multiplyWith: matrices' sizes are not compatible"
+
