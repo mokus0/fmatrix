@@ -1,6 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module Data.Matrix.Algorithms.LUDecomp where
 
+import Data.Matrix.Math
 import Data.Matrix.Algorithms.Substitution
 
 import Control.Monad
@@ -14,8 +15,6 @@ import Data.Array.MArray (MArray)
 import Data.List
 import Data.Ord
 import Data.Complex
-
-(l,u,indx,d) = ludcmp_complex a
 
 luImproveM a l u indx b x0 = x0 `subM` dx
     where
@@ -97,12 +96,13 @@ ludcmp_generic cmp a = do
             k' <- getElem indx k
             piv <- readM lu k' k
             when (piv == 0) $ fail "ludcmp: Singular Matrix"
+            let pivInv = recip piv
             
             sequence_
                 [ do
                     i' <- getElem indx i
                     t <- readM lu i' k
-                    let temp = t / piv
+                    let temp = t * pivInv
                     writeM lu i' k temp
                     
                     sequence_

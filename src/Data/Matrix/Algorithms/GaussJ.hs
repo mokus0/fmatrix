@@ -14,6 +14,7 @@ import Control.Monad
 import Control.Monad.ST
 import Data.StateRef
 import Data.Permute.ST
+import Data.Ord
 
 import qualified Data.IntSet as S
 
@@ -47,28 +48,28 @@ gaussj_inv a = runSTMatrix $ do
     gaussj_inv_st a
 
 gaussj_inv_st :: (Ord t, Fractional t) => STMatrix s t -> ST s (STMatrix s t)
-gaussj_inv_st = gaussj_inv_generic
+gaussj_inv_st = gaussj_inv_generic (comparing abs)
 
 gaussj_inv_stu :: (Ord t, Fractional t, MArray (STUArray s) t (ST s)) 
     => STUMatrix s t -> ST s (STUMatrix s t)
-gaussj_inv_stu = gaussj_inv_generic
+gaussj_inv_stu = gaussj_inv_generic (comparing abs)
 
-gaussj_inv_generic a = do
+gaussj_inv_generic cmp a = do
     n <- getNumRows a
     b <- copyMatrix (FunctionMatrix n 0 undefined)
-    gaussj_generic a (b `asTypeOf` a)
+    gaussj_generic cmp a (b `asTypeOf` a)
     return a
 
 
 
 gaussj_st :: (Ord t, Fractional t) => STMatrix s t -> STMatrix s t -> ST s ()
-gaussj_st = gaussj_generic
+gaussj_st = gaussj_generic (comparing abs)
 
 gaussj_stu :: (Ord t, Fractional t, MArray (STUArray s) t (ST s)) 
     => STUMatrix s t -> STUMatrix s t -> ST s ()
-gaussj_stu = gaussj_generic
+gaussj_stu = gaussj_generic (comparing abs)
 
-gaussj_generic a b = do
+gaussj_generic cmp a b = do
     n <- getNumRows a
     
     ipiv <- newDefaultRef S.empty
@@ -78,7 +79,7 @@ gaussj_generic a b = do
         [ do
             -- pivot and return the column to work on.  icol will take
             -- each value 0..n-1 exactly once.
-            icol <- pivot a b n ipiv indx
+            icol <- pivot cmp a b n ipiv indx
             
             piv <- readM a icol icol
             when (piv == 0) $ fail "gaussj: Singular Matrix"
@@ -103,9 +104,9 @@ gaussj_generic a b = do
 -- select a cell to pivot on.
 -- place that element on the diagonal by swapping rows, and log the swap for
 -- unshuffleColumns to apply to the same columns of the inverse later
-pivot a b n ipivRef indx = do
+pivot cmp a b n ipivRef indx = do
     ipiv <- readRef ipivRef
-    (irow, icol) <- selectPivot a n ipiv
+    (irow, icol) <- selectPivot cmp a n ipiv
     writeRef ipivRef (S.insert icol ipiv)
     
     when (irow /= icol) $ do
@@ -116,7 +117,7 @@ pivot a b n ipivRef indx = do
     return icol
 
 -- select the largest element in the unpivoted rows and columns of the matrix.
-selectPivot a n ipiv = go is is 0 (error "no pivot selected")
+selectPivot cmp a n ipiv = go is is 0 (error "no pivot selected")
     where
         is = filter (`S.notMember` ipiv) [0..n-1]
         
@@ -124,10 +125,9 @@ selectPivot a n ipiv = go is is 0 (error "no pivot selected")
         go    (j:js)  []   big irc = go js is big irc
         go js@(j:_) (k:ks) big irc = do
             x <- readM a j k
-            let abs_x = abs x
-            if abs_x >= big
-                then go js ks abs_x (j,k)
-                else go js ks big    irc
+            if x `cmp` big /= LT
+                then go js ks x  (j,k)
+                else go js ks big irc
 
 -- subtract linear combinations of the pivot row from every other row, using
 -- the value that will cause all values in the column to become zero (or
