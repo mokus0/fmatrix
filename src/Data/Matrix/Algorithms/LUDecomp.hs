@@ -69,29 +69,8 @@ ludcmp_generic cmp a = do
     
     sequence_
         [ do
-            big <- newDefaultRef 0 
-            imax <- newDefaultRef k
-            
-            -- find pivot
-            sequence_
-                [ do
-                    i' <- getElem indx i
-                    
-                    v <- readV vv i'
-                    x <- readM lu i' k
-                    let temp = v * x
-                    big_ <- readRef big
-                    when (temp `cmp` big_ == GT) $ do
-                        writeRef big temp
-                        writeRef imax i
-                | i <- [k..n-1]
-                ]
-            
-            -- execute pivot
-            imax <- readRef imax
-            when (k /= imax) $ do
-                modifyRef d not
-                swapElems indx k imax
+            -- pivot
+            pivot cmp indx d n lu vv k
             
             k' <- getElem indx k
             piv <- readM lu k' k
@@ -123,6 +102,26 @@ ludcmp_generic cmp a = do
     d <- readRef d
     
     return (lu,indx,d)
+
+pivot cmp indx d n lu vv k = do
+    indxs <- getElems indx
+    imax <- selectPivot cmp lu vv k (drop k indxs)
+    
+    -- execute pivot
+    when (k /= imax) $ do
+        modifyRef d not
+        swapElems indx k imax
+
+selectPivot cmp lu vv k indxs = go k k 0 indxs
+    where
+        go i imax big [] = return imax
+        go i imax big (ix:ixs) = do
+            v <- readV vv ix
+            x <- readM lu ix k
+            let temp = v * x
+            case temp `cmp` big of
+                GT -> go (i+1) i    temp ixs
+                _  -> go (i+1) imax big  ixs
 
 lu_split :: (Matrix m t, Num t) => m t -> Permute -> (FunctionMatrix t, FunctionMatrix t)
 lu_split lu indx = (l,u)
