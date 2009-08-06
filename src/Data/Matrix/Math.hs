@@ -4,8 +4,12 @@ import Data.Matrix.Types
 import Data.List
 
 {-# INLINE apply #-}
-apply :: (Num t, Matrix m t, Vector v1 t, Vector v2 t) => m t -> v1 t -> v2 t
-apply = applyWith (+) (*)
+apply :: (Num t, Matrix m t, Vector v t) => m t -> v t -> v t
+apply = genericApply
+
+{-# INLINE genericApply #-}
+genericApply :: (Num t, Matrix m t, Vector v1 t, Vector v2 t) => m t -> v1 t -> v2 t
+genericApply = applyWith (+) (*)
 
 {-# INLINE applyWith #-}
 applyWith :: (Matrix m a, Vector v1 b, Vector v2 c) => (c -> c -> c) -> (a -> b -> c) -> m a -> v1 b -> v2 c
@@ -17,9 +21,14 @@ applyWith (+) (*) m v
     | otherwise
     = error "apply: matrix does not have same number of columns as vector has elements"
 
+
 {-# INLINE multiply #-}
-multiply :: (Num t, Matrix m1 t, Matrix m2 t, Matrix m3 t) => m1 t -> m2 t -> m3 t
-multiply = multiplyWith (foldl1' (+)) (*)
+multiply :: (Num t, Matrix m t) => m t -> m t -> m t
+multiply = genericMultiply
+
+{-# INLINE genericMultiply #-}
+genericMultiply :: (Num t, Matrix m1 t, Matrix m2 t, Matrix m3 t) => m1 t -> m2 t -> m3 t
+genericMultiply = multiplyWith (foldl1' (+)) (*)
 
 {-# INLINE multiplyWith #-}
 multiplyWith :: (Matrix m1 a, Matrix m2 b, Matrix m3 c)

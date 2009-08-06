@@ -2,6 +2,7 @@
 module Data.Matrix.Algorithms.LUDecomp where
 
 import Data.Matrix.Math
+import Data.Matrix.Alias
 import Data.Matrix.Algorithms.Substitution
 
 import Control.Monad
@@ -15,6 +16,15 @@ import Data.Array.MArray (MArray)
 import Data.List
 import Data.Ord
 import Data.Complex
+
+a, b, x' :: UMatrix Double -- can be any Matrix instance
+a  = matrixFromList [[1,3,-2],[3,5,6],[2,4,3]]
+b  = matrixFromList [[5],[7],[8]] 
+x' = matrixFromList [[-15],[8],[2]]
+x :: IMatrix Double
+x  = luSolveM l u indx b
+(l,u,indx,d) = ludcmp a
+
 
 luImproveM a l u indx b x0 = x0 `subM` dx
     where
@@ -44,84 +54,86 @@ ludcmp_complex a = runST (ludcmp_complex_st a)
 luSolveV l u indx = backSub  u . forwardSub  l . permuteV indx
 luSolveM l u indx = backSubs u . forwardSubs l . permuteRows indx
 
+ludcmp_st :: (Ord t, Fractional t, Matrix m t) =>
+             m t -> ST s (FunctionMatrix t, FunctionMatrix t, Permute, Bool)
 ludcmp_st a = do
-    (lu, indx, d) <- ludcmp_generic (comparing abs) a
+    lu <- copyMatrix a
+    (indx, d) <- ludcmp_generic (comparing abs) lu
     lu <- (unsafeFreezeMatrix :: STMatrix s t -> ST s (IMatrix t)) lu
     let (l,u) = lu_split lu indx
     return (l,u,indx,d)
 
 ludcmp_complex_st a = do
-    (lu, indx, d) <- ludcmp_generic (comparing magnitude) a
+    lu <- copyMatrix a
+    (indx, d) <- ludcmp_generic (comparing magnitude) lu
     lu <- (unsafeFreezeMatrix :: STMatrix s t -> ST s (IMatrix t)) lu
     let (l,u) = lu_split lu indx
     return (l,u,indx,d)
 
-ludcmp_generic cmp a = do
-    let n = matRows a
-    indx <- newPermute n
-    lu <- copyMatrix a
-    d  <- newDefaultRef True    -- permutation parity: True = even
+ludcmp_generic cmp luRaw = do
+    n <- getNumRows luRaw
     
-    vv <- rowReduceM lu $ \xs -> do
+    vvRaw <- rowReduceM luRaw $ \xs -> do
+        -- compute scaling factors for each row for use in implicit pivoting
         let x = maximumBy cmp xs
         when (x == 0) $ fail "ludcmp: Singular Matrix"
         return (recip x)
+        
+    indx <- newPermute n
+    d  <- newDefaultRef True    -- permutation parity: True = even
+    
+    -- lu and vv are permuted versions of luRaw and vvRaw.
+    -- The permutation is "live": whenever indx changes, so do these.
+    let lu = aliasMatrixWith (RowPermute indx) luRaw
+        vv = aliasVectorWith (VecPermute indx) vvRaw
     
     sequence_
         [ do
-            -- pivot
-            pivot cmp indx d n lu vv k
+            pivot cmp indx d lu vv n k
             
-            k' <- getElem indx k
-            piv <- readM lu k' k
+            piv <- readM lu k k
             when (piv == 0) $ fail "ludcmp: Singular Matrix"
             let pivInv = recip piv
             
             sequence_
                 [ do
-                    i' <- getElem indx i
-                    t <- readM lu i' k
-                    let temp = t * pivInv
-                    writeM lu i' k temp
+                    temp <- modifyM lu i k (*pivInv)
                     
                     sequence_
-                        [ do
-                            t <- readM lu i' j
-                            lu_k_j <- readM lu k' j
-                            writeM lu i' j (t - temp * lu_k_j)
+                        [ updateM lu i j $ \t -> do
+                            lu_k_j <- readM lu k j
+                            return (t - temp * lu_k_j)
                         | j <- [k+1..n-1]
                         ]
                 | i <- [k+1..n-1]
                 ]
-            
-            
         | k <- [0..n-1]
         ]
     
     indx <- unsafeFreeze indx
     d <- readRef d
     
-    return (lu,indx,d)
+    return (indx,d)
 
-pivot cmp indx d n lu vv k = do
-    indxs <- getElems indx
-    imax <- selectPivot cmp lu vv k (drop k indxs)
+pivot cmp indx d lu vv n k = do
+    imax <- selectPivot cmp lu vv n k
     
     -- execute pivot
     when (k /= imax) $ do
         modifyRef d not
-        swapElems indx k imax
+        swapElems indx k imax -- also swaps rows in lu and elems in vv
 
-selectPivot cmp lu vv k indxs = go k k 0 indxs
+selectPivot cmp lu vv n k = go k k 0
     where
-        go i imax big [] = return imax
-        go i imax big (ix:ixs) = do
-            v <- readV vv ix
-            x <- readM lu ix k
-            let temp = v * x
-            case temp `cmp` big of
-                GT -> go (i+1) i    temp ixs
-                _  -> go (i+1) imax big  ixs
+        go i imax big
+            | i >= n    = return imax
+            | otherwise = do
+                v <- readV vv i
+                x <- readM lu i k
+                let temp = v * x
+                case temp `cmp` big of
+                    GT -> go (i+1) i    temp
+                    _  -> go (i+1) imax big
 
 lu_split :: (Matrix m t, Num t) => m t -> Permute -> (FunctionMatrix t, FunctionMatrix t)
 lu_split lu indx = (l,u)
@@ -136,9 +148,6 @@ lu_split lu indx = (l,u)
             else indexM lu (indx `at` i) j
 
 
--- rowReduceST :: STMatrix s a -> ([a] -> ST s b) -> ST s (STVector s b)
--- rowReduceM :: (MMatrix mat a m, MVector v b m) =>
---               mat a -> ([a] -> m b) -> m (v b)
 rowReduceM :: (MArray a t1 m, MArray a t2 m) =>
               ArrayMatrix a t1 -> ([t1] -> m t2) -> m (ArrayVector a t2)
 rowReduceM m f = do

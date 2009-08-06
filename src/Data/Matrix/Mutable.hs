@@ -8,11 +8,24 @@ import Data.Array.IArray
 import Data.Array.MArray
 import Data.Array.Unboxed
 import Data.Array.ST
+import Data.Permute
 
 class Monad m => MMatrix mat t m where
     newMatrix :: Int -> Int -> (Int -> Int -> t) -> m (mat t)
     readM :: mat t -> Int -> Int -> m t
     writeM :: mat t -> Int -> Int -> t -> m ()
+    modifyM :: mat t -> Int -> Int -> (t -> t) -> m t
+    modifyM m i j f = do
+        x <- readM m i j
+        let fx = f x
+        writeM m i j fx
+        return fx
+    updateM :: mat t -> Int -> Int -> (t -> m t) -> m t
+    updateM m i j f = do
+        x <- readM m i j
+        x <- f x
+        writeM m i j x
+        return x
     getMatSize :: mat t -> m (Int, Int)
 
 type STMatrix s = ArrayMatrix (STArray s)
@@ -64,6 +77,12 @@ swapRows a r1 r2 = do
         | i <- [0..n-1]
         ]
 
+permuteRowsM m p = sequence_
+    [ swapRows m r1 r2
+    | (r1, r2) <- swaps p
+    ]
+    
+
 swapCols a c1 c2 = do
     n <- getNumRows a
     sequence_
@@ -85,7 +104,7 @@ mapRowM a r f = do
         | i <- [0..n-1]
         ]
 
-class MVector v t m where
+class Monad m => MVector v t m where
     newVector :: Int -> (Int -> t) -> m (v t)
     getVecSize :: v t -> m Int
     readV  :: v t -> Int -> m t
