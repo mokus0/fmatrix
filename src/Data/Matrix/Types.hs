@@ -7,6 +7,8 @@ import Foreign.Storable
 import Data.Array.IArray
 import Data.Array.Unboxed
 
+import Data.Permute
+
 class Matrix m t where
     matRows         :: m t -> Int
     matCols         :: m t -> Int
@@ -56,6 +58,20 @@ instance (IArray a t, Show t) => Show (ArrayVector a t) where
 
 type IVector = ArrayVector Array
 type UVector = ArrayVector UArray
+
+data FunctionVector t
+    = FunctionVector
+        { fvSize    :: !Int
+        , fvFunc    :: Int -> t
+        }
+
+instance Show t => Show (FunctionVector t) where
+    showsPrec p = showsVector
+
+instance Vector FunctionVector t where
+    vecElems = fvSize
+    vector = FunctionVector
+    unsafeIndexV = fvFunc
 
 data StorableMatrix t 
     = StorableMatrix
@@ -149,6 +165,9 @@ vectorToList v =
 matrixFromList :: Matrix m t => [[t]] -> m t
 matrixFromList m = matrix (length m) (minimum (map length m)) $ \r c -> m !! r !! c
 
+vectorFromList :: Vector v t => [t] -> v t
+vectorFromList v = vector (length v) (v!!)
+
 convertM :: (Matrix m1 a, Matrix m2 a) => m1 a -> m2 a
 convertM = convertByM id
 convertByM :: (Matrix m1 a, Matrix m2 b) => (a -> b) -> m1 a -> m2 b
@@ -159,3 +178,19 @@ convertV = convertByV id
 convertByV :: (Vector v1 a, Vector v2 b) => (a -> b) -> v1 a -> v2 b
 convertByV f v = vector (vecElems v) (\i -> f (unsafeIndexV v i))
 
+permuteRows :: Matrix m a => Permute -> m a -> FunctionMatrix a
+permuteRows indx m = matrix (matRows m) (matCols m) (\i j -> indexM m (indx `at` i) j)
+
+permuteV :: Vector v a => Permute -> v a -> FunctionVector a
+permuteV indx v = vector (vecElems v) (indexV v . at indx)
+
+kronecker n = matrix n n $ \i j -> if i==j then 1 else 0
+
+liftMatrix2 (+) m1 m2 = matrix r c $ \i j -> indexM m1 i j + indexM m2 i j
+    where
+        r1 = matRows m1
+        r | r1 == matRows m1    = r1
+          | otherwise = error "liftMatrix2: matrix sizes don't match"
+        c1 = matCols m1
+        c | c1 == matCols m1    = c1
+          | otherwise = error "liftMatrix2: matrix sizes don't match"

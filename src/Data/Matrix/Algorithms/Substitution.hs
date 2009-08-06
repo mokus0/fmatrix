@@ -14,7 +14,19 @@ backSub a b = x
     where
         n = matCols a
         x = vector n $ \i ->
-            (indexV b i - sum [indexM a i j * indexV x j | j <- [i+1 .. n-1]]) / indexM a i i
+            (indexV b i - sum [indexM a i k * indexV x k | k <- [i+1 .. n-1]]) / indexM a i i
+        
+        sum [] = 0
+        sum xs = foldl1' (+) xs
+
+backSubs :: (Fractional t, Matrix m t, Matrix v t)
+    => m t -> v t -> IMatrix t
+backSubs a b = x
+    where
+        n = matCols a
+        bs = matCols b
+        x = matrix n bs $ \i j ->
+            (indexM b i j - sum [indexM a i k * indexM x k j | k <- [i+1 .. n-1]]) / indexM a i i
         
         sum [] = 0
         sum xs = foldl1' (+) xs
@@ -25,7 +37,19 @@ forwardSub a b = x
     where
         n = matCols a
         x = vector n $ \i ->
-            (indexV b i - sum [indexM a i j * indexV x j | j <- [0 .. i-1]]) / indexM a i i
+            (indexV b i - sum [indexM a i k * indexV x k | k <- [0 .. i-1]]) / indexM a i i
+        
+        sum [] = 0
+        sum xs = foldl1' (+) xs
+
+forwardSubs :: (Fractional t, Matrix m t, Matrix v t)
+    => m t -> v t -> IMatrix t
+forwardSubs a b = x
+    where
+        n = matCols a
+        bs = matCols b
+        x = matrix n bs $ \i j ->
+            (indexM b i j - sum [indexM a i k * indexM x k j | k <- [0 .. i-1]]) / indexM a i i
         
         sum [] = 0
         sum xs = foldl1' (+) xs
