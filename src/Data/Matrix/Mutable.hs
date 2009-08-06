@@ -11,26 +11,6 @@ import Data.Array.ST
 
 -- TODO: generalize...
 
-newtype ArrayMatrix a t = ArrayMatrix { unArrayMatrix :: (a (Int, Int) t) }
-
-instance (IArray a t) => Matrix (ArrayMatrix a) t
-    where
-        matRows (ArrayMatrix m) = case bounds m of
-            ((0,_), (r,_)) -> r+1
-        matCols (ArrayMatrix m) = case bounds m of
-            ((_,0), (_,c)) -> c+1
-        matrix r c m = ArrayMatrix $ listArray ((0,0), (r-1,c-1))
-            [ m i j
-            | i <- [0..r-1]
-            , j <- [0..c-1]
-            ]
-        unsafeIndexM (ArrayMatrix m) r c = m ! (r,c)
-
-instance (IArray a t, Show t) => Show (ArrayMatrix a t) where
-    showsPrec p = showsMatrix
-
-type IMatrix = ArrayMatrix Array
-type UMatrix = ArrayMatrix UArray
 type STMatrix s = ArrayMatrix (STArray s)
 type STUMatrix s = ArrayMatrix (STUArray s)
 

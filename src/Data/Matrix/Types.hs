@@ -4,6 +4,9 @@ module Data.Matrix.Types where
 import qualified Data.StorableVector as SV
 import Foreign.Storable
 
+import Data.Array.IArray
+import Data.Array.Unboxed
+
 class Matrix m t where
     matRows         :: m t -> Int
     matCols         :: m t -> Int
@@ -14,6 +17,45 @@ class Vector v t where
     vecElems        :: v t -> Int
     vector          :: Int -> (Int -> t) -> v t
     unsafeIndexV    :: v t -> (Int -> t)
+
+newtype ArrayMatrix a t = ArrayMatrix { unArrayMatrix :: (a (Int, Int) t) }
+
+instance (IArray a t) => Matrix (ArrayMatrix a) t
+    where
+        matRows (ArrayMatrix m) = case bounds m of
+            ((0,_), (r,_)) -> r+1
+        matCols (ArrayMatrix m) = case bounds m of
+            ((_,0), (_,c)) -> c+1
+        matrix r c m = ArrayMatrix $ listArray ((0,0), (r-1,c-1))
+            [ m i j
+            | i <- [0..r-1]
+            , j <- [0..c-1]
+            ]
+        unsafeIndexM (ArrayMatrix m) r c = m ! (r,c)
+
+instance (IArray a t, Show t) => Show (ArrayMatrix a t) where
+    showsPrec p = showsMatrix
+
+type IMatrix = ArrayMatrix Array
+type UMatrix = ArrayMatrix UArray
+
+newtype ArrayVector a t = ArrayVector { unArrayVector :: (a Int t) }
+
+instance (IArray a t) => Vector (ArrayVector a) t
+    where
+        vecElems (ArrayVector m) = case bounds m of
+            (0,n) -> n+1
+        vector n v = ArrayVector $ listArray (0,n-1)
+            [ v i
+            | i <- [0..n-1]
+            ]
+        unsafeIndexV (ArrayVector v) i = v ! i
+
+instance (IArray a t, Show t) => Show (ArrayVector a t) where
+    showsPrec p = showsVector
+
+type IVector = ArrayVector Array
+type UVector = ArrayVector UArray
 
 data StorableMatrix t 
     = StorableMatrix
@@ -73,6 +115,7 @@ instance Matrix FunctionMatrix t where
     unsafeIndexM = fmFunc
 
 showsMatrix mat = showString (unlines . map show . matrixToList $ mat)
+showsVector vec = showString (unlines . map show . vectorToList $ vec)
 
 indexM :: Matrix m t => m t -> Int -> Int -> t
 indexM mat r c
@@ -95,6 +138,12 @@ matrixToList m =
       | j <- [0..matCols m - 1]
       ]
     | i <- [0..matRows m - 1]
+    ]
+
+vectorToList :: Vector v t => v t -> [t]
+vectorToList v =
+    [ indexV v i
+    | i <- [0..vecElems v - 1]
     ]
 
 matrixFromList :: Matrix m t => [[t]] -> m t
