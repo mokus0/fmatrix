@@ -9,6 +9,7 @@ import Data.Array.MArray
 import Data.Array.Unboxed
 import Data.Array.ST
 import Data.Permute
+import Data.Permute.MPermute hiding (unsafeFreeze)
 
 class Monad m => MMatrix mat t m where
     newMatrix :: Int -> Int -> (Int -> Int -> t) -> m (mat t)
@@ -65,7 +66,7 @@ getNumCols m = do
     (r,c) <- getMatSize m
     return c
 
-swapRows a r1 r2 = do
+swapRowsM a r1 r2 = do
     n <- getNumCols a
     sequence_
         [ do
@@ -78,12 +79,19 @@ swapRows a r1 r2 = do
         ]
 
 permuteRowsM m p = sequence_
-    [ swapRows m r1 r2
+    [ swapRowsM m r1 r2
     | (r1, r2) <- swaps p
     ]
     
+invPermuteColsM indx a = do
+    swaps <- getInvSwaps indx
+    sequence_
+        [ swapColsM a r c
+        | (r, c) <- swaps
+        , r /= c
+        ]
 
-swapCols a c1 c2 = do
+swapColsM a c1 c2 = do
     n <- getNumRows a
     sequence_
         [ do
@@ -95,14 +103,19 @@ swapCols a c1 c2 = do
         | i <- [0..n-1]
         ]
 
+scaleRowM     a r x = mapRowM     a r (* x)
+scaleRowM_n n a r x = mapRowM_n n a r (* x)
+
 mapRowM a r f = do
     n <- getNumCols a
-    sequence_
-        [ do
-            v <- readM a r i
-            writeM a r i (f v)
-        | i <- [0..n-1]
-        ]
+    mapRowM_n n a r f
+
+mapRowM_n n a r f = sequence_
+    [ do
+        v <- readM a r i
+        writeM a r i (f v)
+    | i <- [0..n-1]
+    ]
 
 class Monad m => MVector v t m where
     newVector :: Int -> (Int -> t) -> m (v t)
@@ -134,3 +147,39 @@ swapVecElems v i j = do
     jv <- readV v j
     writeV      v j iv
     writeV      v i jv
+
+swapVectors v1 v2 = do
+    n1 <- getVecSize v1
+    n2 <- getVecSize v2
+    if n1 /= n2
+        then fail "swapVectors: vectors' sizes differ"
+        else unsafeSwapVectors n1 v1 v2
+
+{-# INLINE unsafeSwapVectors #-}
+unsafeSwapVectors n v1 v2 = sequence_
+    [ do
+        x1 <- readV v1 i
+        x2 <- readV v2 i
+        writeV       v1 i x2
+        writeV       v2 i x1
+    
+    | i <- [0..n-1]
+    ]
+
+-- |zipWithV_is is vDest f v1 v2:
+-- Like zipWith, but operates on vectors.  Operates on indices 'is' and 
+-- places results in vDest, which may be the same as v1 or v2.
+zipWithV_is is vDest f v1 v2  = sequence_
+    [ do
+        x <- readV v1 i
+        y <- readV v2 i
+        writeV vDest i (f x y)
+    | i <- is
+    ]
+
+zipWithV_n n  = zipWithV_is [0..n-1]
+zipWithV vDest f v1 v2 = do
+    n1 <- getVecSize v1
+    n2 <- getVecSize v2
+    nD <- getVecSize vDest
+    zipWithV_n (minimum [n1, n2, nD]) vDest f v1 v2

@@ -9,21 +9,40 @@ import Data.Array.Unboxed
 
 import Data.Permute
 
-class Matrix m t where
+class Linear m a where
+    liftLinear  :: (a -> a) -> m a -> m a
+    liftLinear2 :: (a -> a -> a) -> m a -> m a -> m a
+
+scale k = liftLinear (k*)
+addL a b = liftLinear2 (+) a b
+subL a b = liftLinear2 (-) a b
+mulL a b = liftLinear2 (*) a b
+divL a b = liftLinear2 (/) a b
+
+class Linear m t => Matrix m t where
+    matSize         :: m t -> (Int, Int)
     matRows         :: m t -> Int
+    matRows = fst . matSize
     matCols         :: m t -> Int
+    matCols = snd . matSize
     matrix          :: Int -> Int -> (Int -> Int -> t) -> m t
     unsafeIndexM    :: m t -> (Int -> Int -> t)
 
-class Vector v t where
+class Linear v t => Vector v t where
     vecElems        :: v t -> Int
     vector          :: Int -> (Int -> t) -> v t
     unsafeIndexV    :: v t -> (Int -> t)
 
 newtype ArrayMatrix a t = ArrayMatrix { unArrayMatrix :: (a (Int, Int) t) }
 
+instance (IArray a t) => Linear (ArrayMatrix a) t
+    where
+        liftLinear f (ArrayMatrix a) = ArrayMatrix (amap f a)
+        liftLinear2 = liftMatrix2
 instance (IArray a t) => Matrix (ArrayMatrix a) t
     where
+        matSize (ArrayMatrix m) = case bounds m of
+            ((0,0), (r,c)) -> (r+1, c+1)
         matRows (ArrayMatrix m) = case bounds m of
             ((0,_), (r,_)) -> r+1
         matCols (ArrayMatrix m) = case bounds m of
@@ -43,6 +62,10 @@ type UMatrix = ArrayMatrix UArray
 
 newtype ArrayVector a t = ArrayVector { unArrayVector :: (a Int t) }
 
+instance (IArray a t) => Linear (ArrayVector a) t
+    where
+        liftLinear f (ArrayVector a) = ArrayVector (amap f a)
+        liftLinear2 = liftVector2
 instance (IArray a t) => Vector (ArrayVector a) t
     where
         vecElems (ArrayVector m) = case bounds m of
@@ -68,6 +91,11 @@ data FunctionVector t
 instance Show t => Show (FunctionVector t) where
     showsPrec p = showsVector
 
+instance Functor FunctionVector where
+    fmap f (FunctionVector n v) = FunctionVector n (f.v)
+instance Linear FunctionVector t where
+    liftLinear = fmap
+    liftLinear2 = liftVector2
 instance Vector FunctionVector t where
     vecElems = fvSize
     vector = FunctionVector
@@ -86,7 +114,12 @@ data StorableMatrix t
 instance (Show t, Storable t) => Show (StorableMatrix t) where
     showsPrec p = showsMatrix
 
+instance Storable t => Linear StorableMatrix t where
+    liftLinear = liftMatrix
+    liftLinear2 = liftMatrix2
+    
 instance Storable t => Matrix StorableMatrix t where
+    matSize m       = (smRows m, smCols m)
     matRows         = smRows
     matCols         = smCols
     matrix          = packRowMajor
@@ -124,7 +157,14 @@ data FunctionMatrix t
 instance Show t => Show (FunctionMatrix t) where
     showsPrec p = showsMatrix
 
+instance Functor FunctionMatrix where
+    fmap f (FunctionMatrix r c m) = FunctionMatrix r c (\i j -> f (m i j))
+instance Linear FunctionMatrix t where
+    liftLinear = fmap
+    liftLinear2 f (FunctionMatrix r1 c1 m1) (FunctionMatrix r2 c2 m2) =
+        FunctionMatrix (min r1 r2) (min r2 c2) (\i j -> f (m1 i j) (m2 i j))
 instance Matrix FunctionMatrix t where
+    matSize m = (fmRows m, fmCols m)
     matRows = fmRows
     matCols = fmCols
     matrix = FunctionMatrix
@@ -186,11 +226,30 @@ permuteV indx v = vector (vecElems v) (indexV v . at indx)
 
 kronecker n = matrix n n $ \i j -> if i==j then 1 else 0
 
-liftMatrix2 (+) m1 m2 = matrix r c $ \i j -> indexM m1 i j + indexM m2 i j
+liftMatrix :: (Matrix m a, Matrix m b) => (a -> b) -> m a -> m b
+liftMatrix = convertByM
+liftVector :: (Vector v a, Vector v b) => (a -> b) -> v a -> v b
+liftVector = convertByV
+
+liftMatrix2 :: (Matrix m a, Matrix m b, Matrix m c)
+    => (a -> b -> c) -> m a -> m b -> m c
+liftMatrix2 = convertByM2
+
+liftVector2 :: (Vector v a, Vector v b, Vector v c)
+    => (a -> b -> c) -> v a -> v b -> v c
+liftVector2 = convertByV2
+
+convertByM2 (+) m1 m2 = matrix r c $ \i j -> indexM m1 i j + indexM m2 i j
     where
         r1 = matRows m1
-        r | r1 == matRows m1    = r1
+        r | r1 == matRows m2    = r1
           | otherwise = error "liftMatrix2: matrix sizes don't match"
         c1 = matCols m1
-        c | c1 == matCols m1    = c1
+        c | c1 == matCols m2    = c1
           | otherwise = error "liftMatrix2: matrix sizes don't match"
+
+convertByV2 (+) v1 v2 = vector n $ \i -> indexV v1 i + indexV v2 i
+    where
+        n1 = vecElems v1
+        n | n1 == vecElems v2 = n1
+          | otherwise = error "liftVector2: vector sizes don't match"
