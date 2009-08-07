@@ -1,6 +1,8 @@
 {-
  - Purely functional (and lazy) forward- and back-substitution
- - (solving of lower and upper triangular systems, respectively)
+ - (solving of lower and upper triangular systems, respectively).
+ - Do NOT use unsafeThaw on the results without ensuring
+ - that every cell is evaluated.
  -}
 module Data.Matrix.Algorithms.Substitution where
 
