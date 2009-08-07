@@ -1,4 +1,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
+{-
+ - LU decomposition and related stuff, translated from 
+ - C++ code given in Numerical Recipes, 3rd ed. (p. 52) 
+ -}
 module Data.Matrix.Algorithms.LUDecomp where
 
 import Data.Matrix.Math

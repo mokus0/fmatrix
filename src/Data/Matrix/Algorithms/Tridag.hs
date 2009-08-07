@@ -1,3 +1,7 @@
+{-
+ - Tri-diagonal system solver using LU decomposition, translated
+ - from C++ code given in Numerical Recipes, 3rd ed. (p. 56) 
+ -}
 module Data.Matrix.Algorithms.Tridag where
 
 import Data.Matrix.Math
