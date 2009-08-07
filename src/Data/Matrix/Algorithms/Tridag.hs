@@ -24,7 +24,7 @@ bv = vectorFromList b
 cv = vectorFromList c
 rv = vectorFromList r
 x :: IVector Rational
-x = runSTVector (tridag av bv cv rv)
+x = tridag av bv cv rv
 -- chk should be all zeroes
 chk = m `apply` x `subL` rv
 
@@ -39,7 +39,9 @@ fromLists a b c = matrix n n f
             1   -> c !! i
             _   -> 0
 
-tridag a b c r = do
+tridag a b c r = runSTVector (tridag_generic a b c r)
+
+tridag_generic a b c r = do
     let (gam, u) = decomp_and_fsub a b c r
     u   <- unsafeThawVector u
     backsub gam u
