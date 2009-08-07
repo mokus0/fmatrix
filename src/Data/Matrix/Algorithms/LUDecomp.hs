@@ -84,8 +84,8 @@ ludcmp_generic cmp luRaw = do
     
     -- lu and vv are permuted versions of luRaw and vvRaw.
     -- The permutation is "live": whenever indx changes, so do these.
-    let lu = aliasMatrixWith (RowPermute indx) luRaw
-        vv = aliasVectorWith (VecPermute indx) vvRaw
+    lu <- aliasMatrixWith (RowMPermute indx) luRaw
+    vv <- aliasVectorWith (VecMPermute indx) vvRaw
     
     sequence_
         [ do

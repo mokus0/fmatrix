@@ -9,7 +9,7 @@ import Data.Array.MArray
 import Data.Array.Unboxed
 import Data.Array.ST
 import Data.Permute
-import Data.Permute.MPermute hiding (unsafeFreeze)
+import Data.Permute.MPermute hiding (unsafeFreeze, unsafeThaw)
 
 class Monad m => MMatrix mat t m where
     newMatrix :: Int -> Int -> (Int -> Int -> t) -> m (mat t)
@@ -51,12 +51,29 @@ copyMatrix m = newMatrix (matRows m) (matCols m) (indexM m)
 runSTMatrix :: (forall s. ST s (STMatrix s t)) -> IMatrix t
 runSTMatrix m = ArrayMatrix (runSTArray (fmap unArrayMatrix m))
 
+runSTVector :: (forall s. ST s (STVector s t)) -> IVector t
+runSTVector v = ArrayVector (runSTArray (fmap unArrayVector v))
+
 runSTUMatrix :: (forall s. ST s (STUMatrix s t)) -> UMatrix t
 runSTUMatrix m = ArrayMatrix (runSTUArray (fmap unArrayMatrix m))
 
 unsafeFreezeMatrix (ArrayMatrix m) = do
     m <- unsafeFreeze m
     return (ArrayMatrix m)
+
+unsafeThawMatrix (ArrayMatrix m) = do
+    m <- unsafeThaw m
+    return (ArrayMatrix m)
+
+
+
+unsafeFreezeVector (ArrayVector m) = do
+    m <- unsafeFreeze m
+    return (ArrayVector m)
+
+unsafeThawVector (ArrayVector m) = do
+    m <- unsafeThaw m
+    return (ArrayVector m)
 
 
 getNumRows m = do
@@ -118,15 +135,25 @@ mapRowM_n n a r f = sequence_
     ]
 
 class Monad m => MVector v t m where
-    newVector :: Int -> (Int -> t) -> m (v t)
+    newVector_ :: Int -> m (v t)
+    newVector  :: Int -> (Int -> t) -> m (v t)
     getVecSize :: v t -> m Int
     readV  :: v t -> Int -> m t
     writeV :: v t -> Int -> t -> m ()
+    modifyV :: v t -> Int -> (t -> t) -> m t
+    modifyV v i f = do
+        x <- readV v i
+        let fx = f x
+        writeV v i fx
+        return fx
 
 
 type STVector s = ArrayVector (STArray s)
 
 instance (MArray a t m) => MVector (ArrayVector a) t m where
+    newVector_ n = do
+        v <- newArray_ (0,n-1)
+        return (ArrayVector v)
     newVector n f = do
         v <- newListArray (0,n-1)
             [ f i

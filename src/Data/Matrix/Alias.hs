@@ -4,6 +4,7 @@ module Data.Matrix.Alias where
 import Control.Monad.Identity
 import Data.Matrix.Types
 import Data.Matrix.Mutable
+import Data.Permute
 import Data.Permute.MPermute
 import Data.Monoid
 
@@ -16,8 +17,8 @@ data Alias k m t where
     ZipWith     :: (a -> b -> c) -> Alias k Identity a -> Alias k Identity b -> Alias k Identity c
     MMat        :: MMatrix mat t m => mat t -> Alias Mat m t
     MVec        :: MVector vec t m => vec t -> Alias Vec m t
-    Mat         :: Matrix mat t    => mat t -> Alias Mat m t
-    Vec         :: Vector vec t    => vec t -> Alias Vec m t
+    IMat        :: Matrix mat t    => mat t -> Alias Mat m t
+    IVec        :: Vector vec t    => vec t -> Alias Vec m t
     AsDiag      :: Alias Vec m t -> t -> Alias Mat m t
     AsRow       :: Alias Vec m t      -> Alias Mat m t
     AsCol       :: Alias Vec m t      -> Alias Mat m t
@@ -25,13 +26,18 @@ data Alias k m t where
     Diag        :: Alias Mat m t      -> Alias Vec m t
     Row         :: Int -> Alias Mat m t -> Alias Vec m t
     Col         :: Int -> Alias Mat m t -> Alias Vec m t
+    AsBandDiag  :: Int        -> Alias Mat m t -> Alias Mat m t
+    PackBandDiag:: Int -> Int -> Alias Mat m t -> Alias Mat m t
     ShiftM      :: Int -> Int -> Alias Mat m t -> Alias Mat m t
     CropM       :: Int -> Int -> Alias Mat m t -> Alias Mat m t
     ShiftV      :: Int        -> Alias Vec m t -> Alias Vec m t
     CropV       :: Int        -> Alias Vec m t -> Alias Vec m t
-    RowPermute  :: MPermute p m => p -> Alias Mat m t -> Alias Mat m t
-    ColPermute  :: MPermute p m => p -> Alias Mat m t -> Alias Mat m t
-    VecPermute  :: MPermute p m => p -> Alias Vec m t -> Alias Vec m t
+    RowPermute  :: Permute -> Alias Mat m t -> Alias Mat m t
+    ColPermute  :: Permute -> Alias Mat m t -> Alias Mat m t
+    VecPermute  :: Permute -> Alias Vec m t -> Alias Vec m t
+    RowMPermute :: MPermute p m => p -> Alias Mat m t -> Alias Mat m t
+    ColMPermute :: MPermute p m => p -> Alias Mat m t -> Alias Mat m t
+    VecMPermute :: MPermute p m => p -> Alias Vec m t -> Alias Vec m t
     Overlay     :: Alias k m t -> Alias k m t -> Alias k m t
     Fill        :: t -> Alias k m t
 
@@ -92,7 +98,7 @@ lookupAliasM (ZipWith f m1 m2) i j = do
     c1 <- lookupAliasM m1 i j
     c2 <- lookupAliasM m2 i j
     return (ZipWithCell f c1 c2)
-lookupAliasM (Mat m) i j = do
+lookupAliasM (IMat m) i j = do
     let sz = matSize m
     if inBndsM i j sz
         then return (ROConstCell (indexM m i j))
@@ -109,6 +115,16 @@ lookupAliasM (AsRow v)        0 j = lookupAliasV v j
 lookupAliasM (AsCol v)        i 0 = lookupAliasV v i
 lookupAliasM (Transpose m)    i j = lookupAliasM m j i
 lookupAliasM (ShiftM di dj m) i j = lookupAliasM m (i-di) (j-dj)
+lookupAliasM (AsBandDiag dj m)   i j = do
+    r <- getNumRows m
+    if i < r && j < r
+        then lookupAliasM m i (j-i+dj)
+        else return NoCell
+lookupAliasM (PackBandDiag sub sup m) i j = do
+    let k = i + j - sub
+    if j >= 0 && j <= sub+sup
+        then lookupAliasM m i k
+        else return NoCell
 lookupAliasM (CropM r c m)    i j
     | inBndsM i j (r,c) = lookupAliasM m i j
     | otherwise = return NoCell
@@ -116,10 +132,12 @@ lookupAliasM (Overlay m1 m2)  i j = do
     c1 <- lookupAliasM m1 i j
     c2 <- lookupAliasM m2 i j
     return (c1 `mappend` c2)
-lookupAliasM (RowPermute p m) i j = do
+lookupAliasM (RowPermute p m) i j = lookupAliasM m (p `at` i) j
+lookupAliasM (ColPermute p m) i j = lookupAliasM m i (p `at` j)
+lookupAliasM (RowMPermute p m) i j = do
     i <- getElem p i
     lookupAliasM m i j
-lookupAliasM (ColPermute p m) i j = do
+lookupAliasM (ColMPermute p m) i j = do
     j <- getElem p j
     lookupAliasM m i j
 lookupAliasM (Fill t) i j         = return (ConstCell t)
@@ -131,7 +149,7 @@ aliasSizeM (ZipWith f m1 m2) = do
     (r1,c1) <- aliasSizeM m1
     (r2,c2) <- aliasSizeM m2
     return (min r1 r2, min c1 c2)
-aliasSizeM (Mat m) = return (matSize m)
+aliasSizeM (IMat m) = return (matSize m)
 aliasSizeM (MMat m) = getMatSize m
 aliasSizeM (AsDiag v z) = do
     i <- aliasSizeV v
@@ -144,12 +162,18 @@ aliasSizeM (AsCol v) = do
     return (i,1)
 aliasSizeM (RowPermute p m) = aliasSizeM m
 aliasSizeM (ColPermute p m) = aliasSizeM m
+aliasSizeM (RowMPermute p m) = aliasSizeM m
+aliasSizeM (ColMPermute p m) = aliasSizeM m
+aliasSizeM (AsBandDiag n m) = do
+    (r,c) <- aliasSizeM m
+    return (r,r)
+aliasSizeM (PackBandDiag sub sup m) = do
+    (r,c) <- aliasSizeM m
+    return (r, 1+sub+sup)
 aliasSizeM (ShiftM di dj m) = do
     (r,c) <- aliasSizeM m
     return (r+di, c+dj)
-aliasSizeM (CropM r1 c1 m) = do
-    (r2,c2) <- aliasSizeM m
-    return (min r1 r2, min c1 c2)
+aliasSizeM (CropM r c m) = return (r,c)
 aliasSizeM (Overlay m1 m2) = do
     (r1,c1) <- aliasSizeM m1
     (r2,c2) <- aliasSizeM m2
@@ -166,7 +190,7 @@ lookupAliasV (ZipWith f v1 v2) i = do
     c1 <- lookupAliasV v1 i
     c2 <- lookupAliasV v2 i
     return (ZipWithCell f c1 c2)
-lookupAliasV (Vec v) i = do
+lookupAliasV (IVec v) i = do
     let n = vecElems v
     if inBndsV i n
         then return (ROConstCell (indexV v i))
@@ -188,7 +212,8 @@ lookupAliasV (Overlay v1 v2) i = do
     c1 <- lookupAliasV v1 i
     c2 <- lookupAliasV v2 i
     return (c1 `mappend` c2)
-lookupAliasV (VecPermute p v) i = do
+lookupAliasV (VecPermute p v) i = lookupAliasV v (p `at` i)
+lookupAliasV (VecMPermute p v) i = do
     i <- getElem p i
     lookupAliasV v i
 lookupAliasV (Fill t) i = return (ConstCell t)
@@ -202,12 +227,16 @@ aliasSizeV (ZipWith f v1 v2) = do
     return (min n1 n2)
 aliasSizeV (MVec m) = getVecSize m
 aliasSizeV (VecPermute p m) = aliasSizeV m
+aliasSizeV (VecMPermute p m) = aliasSizeV m
 aliasSizeV _ = error "aliasSizeV: not completely implemented"
 
 
-
-
-aliasMatrixWith f m = f (MMat m)
+-- doesn't need to use 'return', but it allows the
+-- alias to be automagically linked to the type of the
+-- Monad in use.
+aliasMatrixWith :: (Monad m, MMatrix mat t m) =>
+                   (Alias Mat m t -> a) -> mat t -> m a
+aliasMatrixWith f m = return (f (MMat m))
 
 instance Linear (Alias Mat Identity) t where
     liftLinear = FMap
@@ -215,11 +244,11 @@ instance Linear (Alias Mat Identity) t where
     
 instance Matrix (Alias Mat Identity) t where
     matSize = runIdentity . aliasSizeM
-    matrix r c m = (Mat :: FunctionMatrix a -> IAlias Mat a) (matrix r c m)
+    matrix r c m = (IMat :: FunctionMatrix a -> IAlias Mat a) (matrix r c m)
     unsafeIndexM = readICellM
     
 instance Monad m => MMatrix (Alias Mat m) t m where
-    newMatrix r c m = return ((Mat :: FunctionMatrix a -> Alias Mat m a) (matrix r c m))
+    newMatrix r c m = return ((IMat :: FunctionMatrix a -> Alias Mat m a) (matrix r c m))
     readM m i j = do
         cell <- lookupAliasM m i j
         readCell cell
@@ -230,7 +259,9 @@ instance Monad m => MMatrix (Alias Mat m) t m where
         
     getMatSize = aliasSizeM
 
-aliasVectorWith f v = f (MVec v)
+aliasVectorWith :: (Monad m, MVector vec t m) =>
+                   (Alias Vec m t -> a) -> vec t -> m a
+aliasVectorWith f v = return (f (MVec v))
 
 aliasRow, aliasCol :: MMatrix mat t m => mat t -> Int -> m (Alias Vec m t)
 aliasRow m i = return (Row i (MMat m))
@@ -244,11 +275,11 @@ instance Linear (Alias Vec Identity) t where
     liftLinear2 = ZipWith
 instance Vector (Alias Vec Identity) t where
     vecElems = runIdentity . aliasSizeV
-    vector n v = (Vec :: FunctionVector a -> IAlias Vec a) (vector n v)
+    vector n v = (IVec :: FunctionVector a -> IAlias Vec a) (vector n v)
     unsafeIndexV = readICellV
 
 instance Monad m => MVector (Alias Vec m) t m where
-    newVector n v = return ((Vec :: FunctionVector a -> Alias Vec m a) (vector n v))
+    newVector n v = return ((IVec :: FunctionVector a -> Alias Vec m a) (vector n v))
     readV v i = do
         cell <- lookupAliasV v i
         readCell cell
