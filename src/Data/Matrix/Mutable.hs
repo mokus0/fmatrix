@@ -1,4 +1,5 @@
 {-# LANGUAGE RankNTypes, MultiParamTypeClasses, FlexibleInstances, FlexibleContexts #-}
+{-# OPTIONS_GHC -O2 #-}
 module Data.Matrix.Mutable where
 
 import Data.Matrix.Types
@@ -57,10 +58,14 @@ runSTVector v = ArrayVector (runSTArray (fmap unArrayVector v))
 runSTUMatrix :: (forall s. ST s (STUMatrix s t)) -> UMatrix t
 runSTUMatrix m = ArrayMatrix (runSTUArray (fmap unArrayMatrix m))
 
+{-# SPECIALIZE unsafeFreezeMatrix :: STMatrix s t -> ST s (IMatrix t) #-}
+{-# SPECIALIZE unsafeFreezeMatrix :: (IArray UArray t, MArray (STUArray s) t (ST s)) => STUMatrix s t -> ST s (UMatrix t) #-}
 unsafeFreezeMatrix (ArrayMatrix m) = do
     m <- unsafeFreeze m
     return (ArrayMatrix m)
 
+{-# SPECIALIZE unsafeThawMatrix :: IMatrix t -> ST s (STMatrix s t) #-}
+{-# SPECIALIZE unsafeThawMatrix :: (IArray UArray t, MArray (STUArray s) t (ST s)) => UMatrix t -> ST s (STUMatrix s t) #-}
 unsafeThawMatrix (ArrayMatrix m) = do
     m <- unsafeThaw m
     return (ArrayMatrix m)

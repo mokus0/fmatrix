@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ScopedTypeVariables, FlexibleContexts #-}
 {-
  - LU decomposition and related stuff, translated from 
  - C++ code given in Numerical Recipes, 3rd ed. (p. 52) 
@@ -16,6 +16,10 @@ import Data.Permute.ST
 import Data.Matrix.Types
 import Data.Matrix.Mutable
 import Data.StateRef
+
+import Data.Array.Unboxed (UArray)
+import Data.Array.ST hiding (unsafeFreeze)
+import Data.Array.IArray (IArray, Array)
 import Data.Array.MArray (MArray)
 import Data.List
 import Data.Ord
@@ -26,61 +30,81 @@ a  = matrixFromList [[1,3,-2],[3,5,6],[2,4,3]]
 b  = matrixFromList [[5],[7],[8]] 
 x' = matrixFromList [[-15],[8],[2]]
 x :: IMatrix Double
-x  = luSolveM l u indx b
-(l,u,indx,d) = ludcmp a
+x  = luSolveM dcmp b
+dcmp = ludcmp a
 
+data LUDcmp m t = LUDcmp
+    { ludcmp_lu     :: m t
+    , ludcmp_indx   :: Maybe Permute
+    , ludcmp_d      :: Bool
+    }
 
-luImproveM a l u indx b x0 = x0 `subM` dx
+{-# SPECIALIZE unsafeFreezeLUDcmp :: LUDcmp (STMatrix s) t -> ST s (LUDcmp IMatrix t)  #-}
+{-# SPECIALIZE unsafeFreezeLUDcmp :: (IArray UArray t, MArray (STUArray s) t (ST s)) => LUDcmp (STUMatrix s) t -> ST s (LUDcmp UMatrix t)  #-}
+unsafeFreezeLUDcmp (LUDcmp lu indx d) = do
+    lu <- unsafeFreezeMatrix lu
+    return (LUDcmp lu indx d)
+
+lu_split :: (Matrix m t, Num t) => LUDcmp m t -> (FunctionMatrix t, FunctionMatrix t)
+lu_split (LUDcmp lu indx d) = (l,u)
     where
-        dx = luSolveM l u indx rhs
-        rhs = a `multiply` x0 `subM` b
+        n = matRows lu
+        p = maybe id at indx
+        l = matrix n n $ \i j -> case i `compare` j of
+            LT -> 0
+            EQ -> 1
+            GT -> indexM lu (p i) j
+        u = matrix n n $ \i j -> if i > j
+            then 0
+            else indexM lu (p i) j
+
+luImproveM a dcmp b x0 = x0 `subM` convertM dx
+    where
+        dx = luSolveM dcmp rhs
+        rhs = a `genericMultiply` x0 `subM` convertM b
         subM = liftMatrix2 (-)
 
-luInv a = luSolveM l u indx b
+luInv a = luSolveM (ludcmp a) b
     where
-        (l,u,indx,_) = ludcmp a
         n = matRows a
         b = kronecker n `asTypeOf` a
 
 det :: (Fractional a, Ord a, Matrix m a) => m a -> a
 det a = case ludcmp a of
-    (l,u,indx,d) -> sign (reduceDiagonal product u)
+    LUDcmp lu _ d -> sign (reduceDiagonal product lu)
         where
             sign | d         = id
                  | otherwise = negate
 
+luSolveV dcmp = case ludcmp_indx dcmp of
+    Nothing     -> backSub  u . forwardSub  l
+    Just indx   -> backSub  u . forwardSub  l . permuteV indx
+    where (l,u) = lu_split    dcmp
+luSolveM dcmp = case ludcmp_indx dcmp of
+    Nothing     -> backSubs  u . forwardSubs  l
+    Just indx   -> backSubs  u . forwardSubs  l . permuteRows indx
+    where (l,u) = lu_split    dcmp
+
 ludcmp :: (Fractional a, Ord a, Matrix m a) =>
-          m a -> (FunctionMatrix a, FunctionMatrix a, Permute, Bool)
-ludcmp a = runST (ludcmp_st a)
-
-ludcmp_nopivot :: (Fractional a, Matrix m a) =>
-          m a -> (FunctionMatrix a, FunctionMatrix a)
-ludcmp_nopivot a = runST (ludcmp_st_nopivot a)
-
-ludcmp_complex a = runST (ludcmp_complex_st a)
-
-luSolveV l u indx = backSub  u . forwardSub  l . permuteV indx
-luSolveM l u indx = backSubs u . forwardSubs l . permuteRows indx
-
-ludcmp_st a = do
+          m a -> LUDcmp IMatrix a
+ludcmp a = runST $ do
     lu <- copyMatrix a
-    (indx, d) <- ludcmp_generic (comparing abs) lu
-    lu <- (unsafeFreezeMatrix :: STMatrix s t -> ST s (IMatrix t)) lu
-    let (l,u) = lu_split lu indx
-    return (l,u,indx,d)
+    dcmp <- ludcmp_generic (comparing abs) lu `asTypeOf` (undefined :: ST s (LUDcmp (STMatrix s) t))
+    unsafeFreezeLUDcmp dcmp
 
-ludcmp_st_nopivot a = do
+ludcmp_complex :: (RealFloat a, Ord a, Matrix m (Complex a)) =>
+          m (Complex a) -> LUDcmp IMatrix (Complex a)
+ludcmp_complex a = runST $ do
     lu <- copyMatrix a
-    ludcmp_generic_nopivot lu
-    lu <- (unsafeFreezeMatrix :: STMatrix s t -> ST s (IMatrix t)) lu
-    return (lu_split_nopivot lu)
+    dcmp <- ludcmp_generic (comparing (\(a :+ b) -> a*a + b*b)) lu `asTypeOf` (undefined :: ST s (LUDcmp (STMatrix s) t))
+    unsafeFreezeLUDcmp dcmp
 
-ludcmp_complex_st a = do
+ludcmp_stu :: (Fractional a, Ord a, Matrix m a
+            , MArray (STUArray s) a (ST s)
+            ) => m a -> ST s (LUDcmp (STUMatrix s) a)
+ludcmp_stu a = do
     lu <- copyMatrix a
-    (indx, d) <- ludcmp_generic (comparing magnitude) lu
-    lu <- (unsafeFreezeMatrix :: STMatrix s t -> ST s (IMatrix t)) lu
-    let (l,u) = lu_split lu indx
-    return (l,u,indx,d)
+    ludcmp_generic (comparing abs) lu
 
 ludcmp_generic_nopivot lu = do
     n <- getNumRows lu
@@ -149,7 +173,7 @@ ludcmp_generic cmp luRaw = do
     indx <- unsafeFreeze indx
     d <- readRef d
     
-    return (indx,d)
+    return (LUDcmp luRaw (Just indx) d)
 
 pivot cmp indx d lu vv n k = do
     imax <- selectPivot cmp lu vv n k
@@ -170,32 +194,6 @@ selectPivot cmp lu vv n k = go k k 0
                 case temp `cmp` big of
                     GT -> go (i+1) i    temp
                     _  -> go (i+1) imax big
-
-lu_split :: (Matrix m t, Num t) => m t -> Permute -> (FunctionMatrix t, FunctionMatrix t)
-lu_split lu indx = (l,u)
-    where
-        n = matRows lu
-        l = matrix n n $ \i j -> case i `compare` j of
-            LT -> 0
-            EQ -> 1
-            GT -> indexM lu (indx `at` i) j
-        u = matrix n n $ \i j -> if i > j
-            then 0
-            else indexM lu (indx `at` i) j
-
-
-lu_split_nopivot :: (Matrix m t, Num t) => m t -> (FunctionMatrix t, FunctionMatrix t)
-lu_split_nopivot lu = (l,u)
-    where
-        n = matRows lu
-        l = matrix n n $ \i j -> case i `compare` j of
-            LT -> 0
-            EQ -> 1
-            GT -> indexM lu i j
-        u = matrix n n $ \i j -> if i > j
-            then 0
-            else indexM lu i j
-
 
 rowReduceM :: (MArray a t1 m, MArray a t2 m) =>
               ArrayMatrix a t1 -> ([t1] -> m t2) -> m (ArrayVector a t2)
