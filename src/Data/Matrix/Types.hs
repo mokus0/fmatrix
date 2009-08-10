@@ -190,7 +190,9 @@ instance Matrix FunctionMatrix t where
     matrix = FunctionMatrix
     unsafeIndexM = fmFunc
 
+showMatrix mat = showsMatrix mat ""
 showsMatrix mat = showString (unlines . map show . matrixToList $ mat)
+showVector vec = showsVector vec ""
 showsVector vec = showString (unlines . map show . vectorToList $ vec)
 
 indexM :: Matrix m t => m t -> Int -> Int -> t

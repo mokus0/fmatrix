@@ -13,7 +13,8 @@ import Data.Permute
 import Data.Permute.MPermute hiding (unsafeFreeze, unsafeThaw)
 
 class Monad m => MMatrix mat t m where
-    newMatrix :: Int -> Int -> (Int -> Int -> t) -> m (mat t)
+    newMatrix_ :: Int -> Int -> m (mat t)
+    newMatrix  :: Int -> Int -> (Int -> Int -> t) -> m (mat t)
     readM :: mat t -> Int -> Int -> m t
     writeM :: mat t -> Int -> Int -> t -> m ()
     modifyM :: mat t -> Int -> Int -> (t -> t) -> m t
@@ -34,6 +35,9 @@ type STMatrix s = ArrayMatrix (STArray s)
 type STUMatrix s = ArrayMatrix (STUArray s)
 
 instance (MArray a t m) => MMatrix (ArrayMatrix a) t m where
+    newMatrix_ r c = do
+        m <- newArray_ ((0, 0),(r-1, c-1))
+        return (ArrayMatrix m)
     newMatrix r c f = do
         m <- newListArray ((0,0), (r-1,c-1))
             [ f i j
