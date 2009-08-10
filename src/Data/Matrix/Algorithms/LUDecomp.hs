@@ -53,13 +53,15 @@ ludcmp :: (Fractional a, Ord a, Matrix m a) =>
           m a -> (FunctionMatrix a, FunctionMatrix a, Permute, Bool)
 ludcmp a = runST (ludcmp_st a)
 
+ludcmp_nopivot :: (Fractional a, Matrix m a) =>
+          m a -> (FunctionMatrix a, FunctionMatrix a)
+ludcmp_nopivot a = runST (ludcmp_st_nopivot a)
+
 ludcmp_complex a = runST (ludcmp_complex_st a)
 
 luSolveV l u indx = backSub  u . forwardSub  l . permuteV indx
 luSolveM l u indx = backSubs u . forwardSubs l . permuteRows indx
 
-ludcmp_st :: (Ord t, Fractional t, Matrix m t) =>
-             m t -> ST s (FunctionMatrix t, FunctionMatrix t, Permute, Bool)
 ludcmp_st a = do
     lu <- copyMatrix a
     (indx, d) <- ludcmp_generic (comparing abs) lu
@@ -67,12 +69,42 @@ ludcmp_st a = do
     let (l,u) = lu_split lu indx
     return (l,u,indx,d)
 
+ludcmp_st_nopivot a = do
+    lu <- copyMatrix a
+    ludcmp_generic_nopivot lu
+    lu <- (unsafeFreezeMatrix :: STMatrix s t -> ST s (IMatrix t)) lu
+    return (lu_split_nopivot lu)
+
 ludcmp_complex_st a = do
     lu <- copyMatrix a
     (indx, d) <- ludcmp_generic (comparing magnitude) lu
     lu <- (unsafeFreezeMatrix :: STMatrix s t -> ST s (IMatrix t)) lu
     let (l,u) = lu_split lu indx
     return (l,u,indx,d)
+
+ludcmp_generic_nopivot lu = do
+    n <- getNumRows lu
+    
+    sequence_
+        [ do
+            piv <- readM lu k k
+            when (piv == 0) $ fail "ludcmp: Singular Matrix"
+            let pivInv = recip piv
+            
+            sequence_
+                [ do
+                    temp <- modifyM lu i k (*pivInv)
+                    
+                    sequence_
+                        [ updateM lu i j $ \t -> do
+                            lu_k_j <- readM lu k j
+                            return (t - temp * lu_k_j)
+                        | j <- [k+1..n-1]
+                        ]
+                | i <- [k+1..n-1]
+                ]
+        | k <- [0..n-1]
+        ]
 
 ludcmp_generic cmp luRaw = do
     n <- getNumRows luRaw
@@ -150,6 +182,19 @@ lu_split lu indx = (l,u)
         u = matrix n n $ \i j -> if i > j
             then 0
             else indexM lu (indx `at` i) j
+
+
+lu_split_nopivot :: (Matrix m t, Num t) => m t -> (FunctionMatrix t, FunctionMatrix t)
+lu_split_nopivot lu = (l,u)
+    where
+        n = matRows lu
+        l = matrix n n $ \i j -> case i `compare` j of
+            LT -> 0
+            EQ -> 1
+            GT -> indexM lu i j
+        u = matrix n n $ \i j -> if i > j
+            then 0
+            else indexM lu i j
 
 
 rowReduceM :: (MArray a t1 m, MArray a t2 m) =>
