@@ -1,4 +1,4 @@
-{-# LANGUAGE MultiParamTypeClasses, RecordWildCards, FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses, RecordWildCards, FlexibleInstances,FlexibleContexts, UndecidableInstances #-}
 module Data.Matrix.Types where
 
 import qualified Data.StorableVector as SV
@@ -35,6 +35,9 @@ class Linear v t => Vector v t where
 
 newtype ArrayMatrix a t = ArrayMatrix { unArrayMatrix :: (a (Int, Int) t) }
 
+instance Functor (a (Int, Int)) => Functor (ArrayMatrix a) where
+    fmap f (ArrayMatrix m) = ArrayMatrix (fmap f m)
+
 instance (IArray a t) => Linear (ArrayMatrix a) t
     where
         liftLinear f (ArrayMatrix a) = ArrayMatrix (amap f a)
@@ -59,6 +62,16 @@ instance (IArray a t, Show t) => Show (ArrayMatrix a t) where
 
 type IMatrix = ArrayMatrix Array
 type UMatrix = ArrayMatrix UArray
+
+instance Linear [] t
+    where
+        liftLinear = fmap
+        liftLinear2 = zipWith
+instance Vector [] t
+    where
+        vector n v = [v i | i <- [0..n-1]]
+        vecElems = length
+        unsafeIndexV = (!!)
 
 newtype ArrayVector a t = ArrayVector { unArrayVector :: (a Int t) }
 
@@ -88,18 +101,22 @@ data FunctionVector t
         , fvFunc    :: Int -> t
         }
 
-instance Show t => Show (FunctionVector t) where
-    showsPrec p = showsVector
+instance Show t => Show (FunctionVector t)
+    where
+        showsPrec p = showsVector
 
-instance Functor FunctionVector where
-    fmap f (FunctionVector n v) = FunctionVector n (f.v)
-instance Linear FunctionVector t where
-    liftLinear = fmap
-    liftLinear2 = liftVector2
-instance Vector FunctionVector t where
-    vecElems = fvSize
-    vector = FunctionVector
-    unsafeIndexV = fvFunc
+instance Functor FunctionVector
+    where
+        fmap f (FunctionVector n v) = FunctionVector n (f.v)
+instance Linear FunctionVector t
+    where
+        liftLinear = fmap
+        liftLinear2 = liftVector2
+instance Vector FunctionVector t
+    where
+        vecElems = fvSize
+        vector = FunctionVector
+        unsafeIndexV = fvFunc
 
 data StorableMatrix t 
     = StorableMatrix
@@ -111,19 +128,22 @@ data StorableMatrix t
         , smColD   :: !Int
         }
 
-instance (Show t, Storable t) => Show (StorableMatrix t) where
-    showsPrec p = showsMatrix
+instance (Show t, Storable t) => Show (StorableMatrix t)
+    where
+        showsPrec p = showsMatrix
 
-instance Storable t => Linear StorableMatrix t where
-    liftLinear = liftMatrix
-    liftLinear2 = liftMatrix2
-    
-instance Storable t => Matrix StorableMatrix t where
-    matSize m       = (smRows m, smCols m)
-    matRows         = smRows
-    matCols         = smCols
-    matrix          = packRowMajor
-    unsafeIndexM    = unsafeIndexSM
+instance Storable t => Linear StorableMatrix t
+    where
+        liftLinear = liftMatrix
+        liftLinear2 = liftMatrix2
+
+instance Storable t => Matrix StorableMatrix t
+    where
+        matSize m       = (smRows m, smCols m)
+        matRows         = smRows
+        matCols         = smCols
+        matrix          = packRowMajor
+        unsafeIndexM    = unsafeIndexSM
 
 packRowMajor :: Storable t => Int -> Int -> (Int -> Int -> t) -> StorableMatrix t
 packRowMajor r c m = StorableMatrix
@@ -201,6 +221,15 @@ vectorToList v =
     [ indexV v i
     | i <- [0..vecElems v - 1]
     ]
+
+triDiag a b c = matrix n n f
+    where
+        n = minimum [length a, length b, length c]
+        f i j = case j - i of
+            -1  -> indexV a i
+            0   -> indexV b i
+            1   -> indexV c i
+            _   -> 0
 
 matrixFromList :: Matrix m t => [[t]] -> m t
 matrixFromList m = matrix (length m) (minimum (map length m)) $ \r c -> m !! r !! c
