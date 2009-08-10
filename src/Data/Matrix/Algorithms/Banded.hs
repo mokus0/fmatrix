@@ -51,67 +51,20 @@ bandec m1 m2 a = runST (bandec_st m1 m2 a)
 bandec_st m1 m2 a = do
     let n = matRows a
         mm = m1+m2+1
-    --indx <- newPermute n
-    indx <- newVector_ n :: ST s (STVector s Int)
-    l <- newDefaultRef m1
     
-    au <- copyMatrix a      :: ST s (STMatrix s Double) -- for now, generalize later
+    au <- newMatrix_ n mm   :: ST s (STMatrix s Double) -- for now, generalize later
     al <- newMatrix_ n m1   :: ST s (STMatrix s Double) -- for now, generalize later
+    repack a au m1 m2
     
-    -- rearrange storage
-    sequence_
-        [ do
-            l_ <- readRef l
-            sequence_
-                [ do
-                    x <- readM au i j
-                    writeM au i (j-l_) x
-                | j <- [m1-i .. mm-1]
-                ]
-            writeRef l (pred l_)
-            l_ <- readRef l
-            sequence_
-                [ do
-                    writeM au i j 0
-                | j <- [mm-l_-1 .. mm-1]
-                ]
-        | i <- [0..m1-1]
-        ]
-    
+    indx <- newVector_ n :: ST s (STVector s Int)
     d <- newDefaultRef True
-    writeRef l m1
     
     sequence_
         [ do
-            dum <- readM au k 0
-            dum <- newDefaultRef dum
-            i <- newDefaultRef k
+            let l = min n (m1 + k + 1)
+            pivot au k l indx d
             
-            l_ <- readRef l
-            when (l_<n) $ modifyRef l succ
-            l_ <- readRef l
-            
-            -- find the pivot element
-            sequence_
-                [ do
-                    dum_ <- readRef dum
-                    au_j_0 <- readM au j 0
-                    when (abs au_j_0 > abs dum_) $ do
-                        writeRef dum au_j_0
-                        writeRef i j
-                | j <- [k+1 .. l_-1]
-                ]
-            
-            i <- readRef i
-            dum <- readRef dum
-            
-            when (dum == 0) (fail "bandec: algorithmically singular matrix")
-            writeV indx k i
-            when (i /= k) $ do
-                modifyRef d not
---                swapElems indx i k
-                swapRowsM au   i k
-            
+            -- eliminate
             sequence_
                 [ do
                     au_i_0 <- readM au i 0
@@ -127,58 +80,82 @@ bandec_st m1 m2 a = do
                         | j <- [1..mm-1]
                         ]
                     writeM au i (mm-1) 0
-                | i <- [k+1 .. l_-1]
+                | i <- [k+1 .. l-1]
                 ]
         | k <- [0..n-1]
         ]
     
-    au <- unsafeFreezeMatrix au
-    al <- unsafeFreezeMatrix al
---    indx <- unsafeFreeze indx
+    au   <- unsafeFreezeMatrix au
+    al   <- unsafeFreezeMatrix al
     indx <- unsafeFreezeVector indx
-    d <- readRef d
+    d    <- readRef d
     return (Bandec n m1 m2 au al indx d)
 
 bandec_solve (Bandec n m1 m2 au al indx d) b = runSTVector $ do
     x <- copyVector b :: ST s (STVector s Double)
---    x <- copyVector (permuteV indx b) :: ST s (STVector s Double)
     let mm = m1+m2+1
+    
+    -- forward substitution
+    sequence_
+        [ do
+            when (k /= k') $ swapVecElems x k k'
+            
+            x_k <- readV x k
+            
+            sequence_
+                [ do
+                    modifyV x j (subtract (indexM al k (j-k-1) * x_k))
+                | j <- [k+1 .. l-1]
+                ]
+        | k <- [0 .. n-1]
+        , let l = min (m1+k+1) n
+              k' = indexV indx k
+        ]
+    
+    -- back-substitution
+    sequence_
+        [ do
+            updateV x i $ \x_i -> do
+                dum <- let f dum k = do
+                                x_kpi <- readV x (k+i)
+                                return (dum - indexM au i k * x_kpi)
+                         in foldM f x_i [1 .. l-1]
+                
+                return (dum / indexM au i 0)
+        | i <- [n-1,n-2 .. 0]
+        , let l = min (n-i) mm
+        ]
+    return x
+
+repack a au m1 m2 = do
+    let n = matRows a
     l <- newDefaultRef m1
     sequence_
         [ do
---            let j = inverse indx `at` k
-            let j = indexV indx k
-            when (j /= k) $ swapVecElems x k j
-            
-            l_ <- readRef l
-            when (l_ < n) $ writeRef l (succ l_)
-            l_ <- readRef l
-            sequence_
-                [ do
-                    let al_k_foo = indexM al k (j-k-1)
-                    x_k <- readV x k
-                    modifyV x j (subtract (al_k_foo * x_k))
-                | j <- [k+1 .. l_-1]
-                ]
-        | k <- [0 .. n-1]
+            let x   | j <= m2+m1 - l
+                    = indexM a i (j+l)
+                    | otherwise = 0
+            writeM au i j x
+        | i <- [0..n-1]
+        , let l = max (m1-i) 0
+        , j <- [0 .. m1+m2]
         ]
-    writeRef l 1
-    sequence_
-        [ do
-            dum <- readV x i
-            dum <- newDefaultRef dum
-            
-            l_ <- readRef l
-            sequence_
-                [ do
-                    let au_i_k = indexM au i k
-                    x_kpi <- readV x (k+i)
-                    modifyRef dum (subtract (au_i_k * x_kpi))
-                | k <- [1 .. l_-1]
-                ]
-            dum <- readRef dum
-            writeV x i (dum / indexM au i 0)
-            when (l_<mm) $ modifyRef l succ
-        | i <- [n-1,n-2 .. 0]
-        ]
-    return x
+
+pivot au k l indx d = do
+    i <- selectPivot au k l
+    
+    writeV indx k i
+    when (i /= k) $ do
+        modifyRef d not
+        swapRowsM au   i k
+
+selectPivot au k l = go [k .. l-1] k 0
+    where
+        go [] i 0 = fail "bandec: algorithmically singular matrix"
+        go [] i _ = return i
+        go (j:js) i best = do
+            au_j_0 <- readM au j 0
+            if abs au_j_0 > abs best
+                then go js j au_j_0
+                else go js i best
+    
