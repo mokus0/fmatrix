@@ -279,7 +279,8 @@ instance Vector (Alias Vec Identity) t where
     unsafeIndexV = readICellV
 
 instance Monad m => MVector (Alias Vec m) t m where
-    newVector n v = return ((IVec :: FunctionVector a -> Alias Vec m a) (vector n v))
+    newVector_ n   = error "newVector_ doesn't make sense for type 'Alias Vec'"
+    newVector  n v = error "newVector doesn't make sense for type 'Alias Vec'"
     readV v i = do
         cell <- lookupAliasV v i
         readCell cell

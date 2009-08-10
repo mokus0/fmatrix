@@ -146,6 +146,12 @@ class Monad m => MVector v t m where
         let fx = f x
         writeV v i fx
         return fx
+    updateV :: v t -> Int -> (t -> m t) -> m t
+    updateV m i f = do
+        x <- readV m i
+        x <- f x
+        writeV m i x
+        return x
 
 
 type STVector s = ArrayVector (STArray s)
