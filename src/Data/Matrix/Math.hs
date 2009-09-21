@@ -43,3 +43,11 @@ multiplyWith sum (*) m1 m2
     | otherwise
     = error "multiplyWith: matrices' sizes are not compatible"
 
+{-# INLINE dot #-}
+dot v1 v2 = foldl' (+) 0 [indexV v1 i * indexV v2 i | i <- [0..n-1]]
+    where 
+        n = same (vecElems v1) (vecElems v2)
+        same a b
+            | a == b    = a
+            | otherwise = error ("dot: vector lengths are not the same")
+

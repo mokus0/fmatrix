@@ -228,6 +228,9 @@ aliasSizeV (ZipWith f v1 v2) = do
 aliasSizeV (MVec m) = getVecSize m
 aliasSizeV (VecPermute p m) = aliasSizeV m
 aliasSizeV (VecMPermute p m) = aliasSizeV m
+aliasSizeV (Row r m) = do
+    (_,c) <- aliasSizeM m
+    return c
 aliasSizeV _ = error "aliasSizeV: not completely implemented"
 
 
@@ -267,6 +270,11 @@ aliasRow, aliasCol :: MMatrix mat t m => mat t -> Int -> m (Alias Vec m t)
 aliasRow m i = return (Row i (MMat m))
 aliasCol m j = return (Row j (MMat m))
 
+row :: (Matrix mat a) => Int -> mat a -> IAlias Vec a
+row n mat = Row n (IMat mat)
+
+col :: (Matrix mat a) => Int -> mat a -> IAlias Vec a
+col n mat = Col n (IMat mat)
 
 instance Functor (Alias k Identity) where
     fmap = FMap

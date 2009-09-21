@@ -16,5 +16,14 @@ description:            I'm too lame to describe my project
 
 Library
   hs-source-dirs:       src
-  exposed-modules:      
-  build-depends:        base >= 3
+  exposed-modules:      Data.Matrix.Alias
+                        Data.Matrix.Math
+                        Data.Matrix.Mutable
+                        Data.Matrix.Types
+                        Data.Matrix.Algorithms.Banded
+                        Data.Matrix.Algorithms.Bidiagonalization
+                        Data.Matrix.Algorithms.GaussJ
+                        Data.Matrix.Algorithms.LUDecomp
+                        Data.Matrix.Algorithms.Substitution
+                        Data.Matrix.Algorithms.Tridag
+  build-depends:        base >= 3, permutation, mtl, array, storablevector, stateref, containers

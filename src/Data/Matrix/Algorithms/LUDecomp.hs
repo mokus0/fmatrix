@@ -108,6 +108,11 @@ ludcmp a = runST $ do
     dcmp <- ludcmp_generic (comparing abs) lu `asTypeOf` (undefined :: ST s (LUDecomp (STMatrix s) t))
     unsafeFreezeLUDecomp dcmp
 
+-- ludcmp_u a = runST ( do
+--     dcmp <- ludcmp_stu a -- (comparing abs) lu `asTypeOf` (undefined :: ST s (LUDecomp (STMatrix s) t))
+--     unsafeFreezeLUDecomp dcmp
+--     )
+
 ludcmp_complex :: (RealFloat a, Ord a, Matrix m (Complex a)) =>
           m (Complex a) -> LUDecomp IMatrix (Complex a)
 ludcmp_complex a = runST $ do

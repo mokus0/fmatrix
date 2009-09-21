@@ -239,6 +239,16 @@ matrixFromList m = matrix (length m) (minimum (map length m)) $ \r c -> m !! r !
 vectorFromList :: Vector v t => [t] -> v t
 vectorFromList v = vector (length v) (v!!)
 
+imatrix :: Int -> Int -> (Int -> Int -> t) -> IMatrix t
+imatrix = matrix
+ivector :: Int -> (Int -> t) -> IVector t
+ivector = vector
+
+fmatrix :: Int -> Int -> (Int -> Int -> t) -> FunctionMatrix t
+fmatrix = matrix
+fvector :: Int -> (Int -> t) -> FunctionVector t
+fvector = vector
+
 convertM :: (Matrix m1 a, Matrix m2 a) => m1 a -> m2 a
 convertM = convertByM id
 convertByM :: (Matrix m1 a, Matrix m2 b) => (a -> b) -> m1 a -> m2 b
