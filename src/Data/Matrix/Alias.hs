@@ -75,7 +75,7 @@ writeCell :: Monad m => CellAlias m t -> t -> m ()
 writeCell (MMatCell i j m)  x = writeM m i j x
 writeCell (MVecCell i v)    x = writeV v i x
 writeCell (ROConstCell t)   x = error "writeCell: cell written is read-only"
-writeCell (ConstCell t)     x = return ()
+writeCell (ConstCell   t)   x = return ()
 writeCell NoCell x = fail "Alias.writeCell: cell written was not aliased to anything"
 
 instance Monoid (CellAlias m t) where
