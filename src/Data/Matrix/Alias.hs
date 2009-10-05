@@ -13,8 +13,8 @@ data Vec
 
 type IAlias k = Alias k Identity
 data Alias k m t where
-    FMap        :: (a -> b) -> Alias k Identity a -> Alias k Identity b
-    ZipWith     :: (a -> b -> c) -> Alias k Identity a -> Alias k Identity b -> Alias k Identity c
+    FMap        :: (a -> b) -> Alias k m a -> Alias k m b
+    ZipWith     :: (a -> b -> c) -> Alias k m a -> Alias k m b -> Alias k m c
     MMat        :: MMatrix mat t m => mat t -> Alias Mat m t
     MVec        :: MVector vec t m => vec t -> Alias Vec m t
     IMat        :: Matrix mat t    => mat t -> Alias Mat m t
@@ -43,8 +43,8 @@ data Alias k m t where
 
 type ICellAlias = CellAlias Identity
 data CellAlias m t where
-    FMapCell    :: (a -> b) -> CellAlias Identity a -> CellAlias Identity b
-    ZipWithCell :: (a -> b -> c) -> CellAlias Identity a -> CellAlias Identity b -> CellAlias Identity c
+    FMapCell    :: (a -> b) -> CellAlias m a -> CellAlias m b
+    ZipWithCell :: (a -> b -> c) -> CellAlias m a -> CellAlias m b -> CellAlias m c
     MMatCell    :: MMatrix mat t m => Int -> Int -> mat t -> CellAlias m t
     MVecCell    :: MVector vec t m => Int ->        vec t -> CellAlias m t
     ConstCell   :: t -> CellAlias m t
@@ -241,16 +241,13 @@ aliasMatrixWith :: (Monad m, MMatrix mat t m) =>
                    (Alias Mat m t -> a) -> mat t -> m a
 aliasMatrixWith f m = return (f (MMat m))
 
-instance Linear (Alias Mat Identity) t where
-    liftLinear = FMap
-    liftLinear2 = ZipWith
-    
 instance Matrix (Alias Mat Identity) t where
     matSize = runIdentity . aliasSizeM
     matrix r c m = (IMat :: FunctionMatrix a -> IAlias Mat a) (matrix r c m)
     unsafeIndexM = readICellM
     
 instance Monad m => MMatrix (Alias Mat m) t m where
+    newMatrix_ r c = error "newMatrix_ doesn't make sense for type 'Alias Mat'"
     newMatrix r c m = return ((IMat :: FunctionMatrix a -> Alias Mat m a) (matrix r c m))
     readM m i j = do
         cell <- lookupAliasM m i j
@@ -276,10 +273,10 @@ row n mat = Row n (IMat mat)
 col :: (Matrix mat a) => Int -> mat a -> IAlias Vec a
 col n mat = Col n (IMat mat)
 
-instance Functor (Alias k Identity) where
+instance Functor (Alias k m) where
     fmap = FMap
-instance Linear (Alias Vec Identity) t where
-    liftLinear = fmap
+instance Linear (Alias k m) t where
+    liftLinear = FMap
     liftLinear2 = ZipWith
 instance Vector (Alias Vec Identity) t where
     vecElems = runIdentity . aliasSizeV
