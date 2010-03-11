@@ -57,7 +57,7 @@ bandec_st m1 m2 a = do
     repack a au m1 m2
     
     indx <- newVector_ n :: ST s (STVector s Int)
-    d <- newDefaultRef True
+    d <- newRef True
     
     sequence_
         [ do
@@ -129,7 +129,7 @@ bandec_solve (Bandec n m1 m2 au al indx d) b = runSTVector $ do
 
 repack a au m1 m2 = do
     let n = matRows a
-    l <- newDefaultRef m1
+    l <- newRef m1
     sequence_
         [ do
             let x   | j <= m2+m1 - l

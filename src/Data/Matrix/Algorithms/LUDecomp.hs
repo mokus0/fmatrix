@@ -161,7 +161,7 @@ ludcmp_generic cmp luRaw = do
         return (recip x)
         
     indx <- newPermute n
-    d  <- newDefaultRef True    -- permutation parity: True = even
+    d  <- newRef True    -- permutation parity: True = even
     
     -- lu and vv are permuted versions of luRaw and vvRaw.
     -- The permutation is "live": whenever indx changes, so do these.

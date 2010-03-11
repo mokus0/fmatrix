@@ -92,7 +92,7 @@ gaussj_generic cmp a b = do
     m <- getNumCols b
     
     -- the set of indices that have not yet been processed
-    ipiv <- newDefaultRef (S.fromList [0..n-1])
+    ipiv <- newRef (S.fromList [0..n-1])
     -- the permutation of the columns in the output
     indx <- newPermute n
     
