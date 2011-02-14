@@ -5,14 +5,14 @@ stability:              experimental
 cabal-version:          >= 1.2
 build-type:             Simple
 
-author:                 James Cook <your email here>
-maintainer:             James Cook <your email here>
+author:                 James Cook <mokus@deepbondi.net>
+maintainer:             James Cook <mokus@deepbondi.net>
 license:                Unspecified
 homepage:               /dev/null
 
-category:               Unclassified
-synopsis:               I'm too lame to describe my project
-description:            I'm too lame to describe my project
+category:               Math
+synopsis:               Experimental generic matrix interface and some numerical linear algebra algorithms
+description:            Experimental generic matrix interface and some numerical linear algebra algorithms
 
 Library
   hs-source-dirs:       src
@@ -26,4 +26,10 @@ Library
                         Data.Matrix.Algorithms.LUDecomp
                         Data.Matrix.Algorithms.Substitution
                         Data.Matrix.Algorithms.Tridag
-  build-depends:        base >= 3, permutation, mtl, array, storablevector, stateref, containers
+  build-depends:        base >= 3 && <5, 
+                        array,
+                        containers,
+                        mtl,
+                        permutation,
+                        stateref,
+                        vector

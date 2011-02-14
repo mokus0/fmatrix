@@ -1,7 +1,7 @@
 {-# LANGUAGE MultiParamTypeClasses, RecordWildCards, FlexibleInstances,FlexibleContexts, UndecidableInstances #-}
 module Data.Matrix.Types where
 
-import qualified Data.StorableVector as SV
+import qualified Data.Vector.Storable as SV
 import Foreign.Storable
 
 import Data.Array.IArray
@@ -152,7 +152,7 @@ packRowMajor r c m = StorableMatrix
     , smCols   = c
     , smColD   = 1
     , smPos    = 0
-    , smBuf    = SV.pack [m i j | i <- [0..r-1], j <- [0..c-1]]
+    , smBuf    = SV.fromList [m i j | i <- [0..r-1], j <- [0..c-1]]
     }
 
 packColMajor :: Storable t => Int -> Int -> (Int -> Int -> t) -> StorableMatrix t
@@ -162,10 +162,10 @@ packColMajor r c m = StorableMatrix
     , smCols   = c
     , smColD   = r
     , smPos    = 0
-    , smBuf    = SV.pack [m i j | j <- [0..c-1], i <- [0..r-1]]
+    , smBuf    = SV.fromList [m i j | j <- [0..c-1], i <- [0..r-1]]
     }
 
-unsafeIndexSM StorableMatrix{..} r c = SV.index smBuf (smPos + r * smRowD + c * smColD)
+unsafeIndexSM StorableMatrix{..} r c = SV.unsafeIndex smBuf (smPos + r * smRowD + c * smColD)
 
 data FunctionMatrix t
     = FunctionMatrix
