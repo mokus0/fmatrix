@@ -20,6 +20,7 @@ import Data.Matrix.Alias
 import Data.Matrix.Algorithms.Substitution
 
 import Control.Monad
+import Control.Monad.Identity (Identity)
 import Control.Monad.ST
 import Data.Permute
 import Data.Permute.ST
@@ -85,10 +86,14 @@ luInv a = luSolveM (ludcmp a) b
         n = matRows a
         b = kronecker n `asTypeOf` a
 
+-- TODO: properly handle the case where the determinant is zero
+-- (currently ludcmp will throw an error saying "Singular Matrix")
 det :: (Fractional a, Ord a, Matrix m a) => m a -> a
 det a = case ludcmp a of
-    LUDecomp lu _ d -> sign (reduceDiagonal product lu)
+    LUDecomp lu indx d -> sign (reduceDiagonal product (maybe id' RowPermute indx (IMat lu)))
         where
+            id' :: Alias Mat Identity t -> Alias Mat Identity t
+            id' = id
             sign | d         = id
                  | otherwise = negate
 
