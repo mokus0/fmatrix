@@ -19,7 +19,7 @@ import Data.Ord
 bidiagonalize_r a = bidiagonalize_g (comparing abs) id a
 bidiagonalize_c a = bidiagonalize_g (comparing magnitude) conjugate a
 
-bidiagonalize_g :: (Floating t, Matrix m t) =>
+bidiagonalize_g :: (Floating t, Eq t, Matrix m t) =>
                    (t -> t -> Ordering)
                    -> (t -> t)
                    -> m t
